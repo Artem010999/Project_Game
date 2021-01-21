@@ -47,7 +47,7 @@ def new_window():  # движение и анимация персонажа99
 main_player = Player(50, 460, 40, 40)
 Running = True
 while Running:
-    clock.tick(27)
+    clock.tick(50)
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             Running = False
