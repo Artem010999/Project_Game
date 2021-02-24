@@ -71,6 +71,22 @@ def write_text(text, font, text_color, x, y):  # функция для созд�
     screen.blit(image_of_text, (x, y))
 
 
+def reset_level(level):  # функция для перезапуска уровня
+    player.reset(80, screen_height - 104)
+    ghost_group.empty()
+    platform_group.empty()
+    lava_group.empty()
+    exit_group.empty()
+    coin_group.empty()
+    pumpkin_group.empty()
+
+    if path.exists(f'level{level}_data.txt'):   # отрисовка
+        pickle_in = open(f'level{level}_data.txt', 'rb')
+        world_data = pickle.load(pickle_in)
+    world = World(world_data)
+
+    return world
+
 class Button(object):
     def __init__(self, x_button, y_button, img):
         self.image = pygame.transform.scale(img, (tile_size * 5, tile_size * 3))
@@ -117,6 +133,134 @@ class Button_1(object):
         return action
 
 
+class Player(object):
+    def __init__(self, x, y):
+        self.reset(x, y)
+
+    def update(self, game_over):
+        delta_x = 0
+        delta_y = 0
+        walk_recharge = 5
+        collision = 20
+
+        if game_over == 0:  # нажатие кнопок
+            key = pygame.key.get_pressed()
+            if key[pygame.K_SPACE] and not self.jumped and not self.in_air:
+                jump_fx.play()
+                self.shift_y = -15
+                self.jumped = True
+            if not key[pygame.K_SPACE]:
+                self.jumped = False
+            if key[pygame.K_LEFT]:
+                delta_x -= 5
+                self.counter += 1
+                self.direction = -1
+            if key[pygame.K_RIGHT]:
+                delta_x += 5
+                self.counter += 1
+                self.direction = 1
+            if not key[pygame.K_LEFT] and not key[pygame.K_RIGHT]:
+                self.counter = 0
+                self.index = 0
+                if self.direction == 1:
+                    self.image_player = self.images_right[self.index]
+                if self.direction == -1:
+                    self.image_player = self.images_left[self.index]
+
+            if self.counter > walk_recharge:  # анимация движения
+                self.counter = 0
+                self.index += 1
+                if self.index >= len(self.images_right):
+                    self.index = 0
+                if self.direction == 1:
+                    self.image_player = self.images_right[self.index]
+                if self.direction == -1:
+                    self.image_player = self.images_left[self.index]
+
+            self.shift_y += 1  # что-то типо гравитации
+            if self.shift_y > 10:
+                self.shift_y = 10
+            delta_y += self.shift_y
+
+            self.in_air = True  # проверка на столкновения
+            for tile in world.tile_list:
+                if tile[1].colliderect(self.rect.x + delta_x, self.rect.y, self.width, self.height):  # проверка на столкновения по горизонтали
+                    delta_x = 0
+                if tile[1].colliderect(self.rect.x, self.rect.y + delta_y, self.width, self.height):  # проверка на столкновения по вертикали
+                    if self.shift_y < 0:  # прыжооооок
+                        delta_y = tile[1].bottom - self.rect.top
+                        self.shift_y = 0  # падеееение
+                    elif self.shift_y >= 0:
+                        delta_y = tile[1].top - self.rect.bottom
+                        self.shift_y = 0
+                        self.in_air = False
+
+            if pygame.sprite.spritecollide(self, ghost_group, False):  # проверка на столкновение с противниками (призраки)
+                game_over = -1
+                game_over_fx.play()
+
+            if pygame.sprite.spritecollide(self, lava_group, False):  # проверка на столкновение с лавой
+                game_over = -1
+                game_over_fx.play()
+
+            if pygame.sprite.spritecollide(self, exit_group, False):  # проверка на столкновение с выходом
+                game_over = 1
+                if level < 10:
+                    portal_fx.play()
+                    pass
+
+            for platform in platform_group:
+                if platform.rect.colliderect(self.rect.x + delta_x, self.rect.y, self.width, self.height):
+                    delta_x = 0
+                if platform.rect.colliderect(self.rect.x, self.rect.y + delta_y, self.width, self.height):
+                    # if abs((self.rect.top + delta_y) - platform.rect.bottom) < collision:  # проверка столкновения ПОД платформой
+                    #     self.shift_y = 0
+                    #     delta_y = platform.rect.bottom - self.rect.top
+                    if abs((self.rect.bottom + delta_y) - platform.rect.top) < collision:  # проверка столкновения НАД платформой
+                        self.rect.bottom = platform.rect.top - 1  # считерил :3
+                        self.in_air = False
+                        delta_y = 0
+                    if platform.move_x != 0:
+                        self.rect.x += platform.move_direction
+
+            self.rect.x += delta_x  # обновление координат игрока
+            self.rect.y += delta_y
+
+        elif game_over == -1:  # полёт мёртвого игрока
+            self.image_player = self.dead_image
+            if self.rect.y > -100:
+                self.rect.y -= 5
+
+        screen.blit(self.image_player, self.rect)
+        # pygame.draw.rect(screen, 'white', self.rect, 2) - отрисовка хитбокса персонажа
+
+        return game_over
+
+    def reset(self, x, y):
+        self.images_right = []
+        self.images_left = []
+        self.index = 0
+        self.counter = 0
+        for number in range(1, 9):
+            img_right = pygame.image.load(f'R{number}.png')
+            img_right = pygame.transform.scale(img_right, (35, 64))
+            img_left = pygame.transform.flip(img_right, True, False)
+            self.images_right.append(img_right)
+            self.images_left.append(img_left)
+        self.dead_image = pygame.image.load('dead.png')
+        self.image_player = self.images_right[self.index]
+        self.rect = self.image_player.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.width = self.image_player.get_width()
+        self.height = self.image_player.get_height()
+        self.shift_y = 0
+        self.jumped = False
+        self.direction = 0
+        self.in_air = True
+
+
+player = Player(80, screen_height - 104)
 main_block = pygame.sprite.Group()
 
 ghost_group = pygame.sprite.Group()
@@ -178,9 +322,71 @@ while Running:
         pass
 
     elif main_menu == -1:
-        # основные дейctвия
-        pass
+        world.draw()
+        if time_to_count:
+            begin_time = time.time()
+            all_time.append(begin_time)
+        if back_button_game.draw():
+            main_menu = 1
+        if game_over == 0:  # игрок жив
+            ghost_group.update()
+            platform_group.update()
+            if pygame.sprite.spritecollide(player, coin_group, True):
+                score += 1
+                coin_fx.play()
+            write_text('    Тугриков X ' + str(score) + ' монет', font_score, 'green', 8, 8)
+            write_text('Время: ' + str(round(all_time[-1] - all_time[0], 1)) + ' секунд', font_score, 'green', 500, 8)
 
+        ghost_group.draw(screen)
+        platform_group.draw(screen)
+        lava_group.draw(screen)
+        coin_group.draw(screen)
+        exit_group.draw(screen)
+        pumpkin_group.draw(screen)
+        alone_coin.draw(screen)
+        checkpoint_group.draw(screen)
+        game_over = player.update(game_over)
+        if game_over == -1:  # игрок погиб
+            write_text('    Тугриков X ' + str(score) + ' монет', font_score, 'green', 8, 8)
+            write_text('Время: ' + str(round(all_time[-1] - all_time[0], 1)) + ' секунд', font_score, 'green', 500, 8)
+            write_text('ИГРА ОКОНЧЕНА.', game_over_text, blue, screen_width // 2 - 130, screen_height // 2)
+            if restart_button.draw():
+                world_data = []
+                world = reset_level(level)
+                game_over = 0
+                score = 0
+
+        if game_over == 1:  # игрок завершил игру (уровень)
+            level += 1  # переход на след. уровень
+            if level <= max_levels:
+                world_data = []  # перезапуск уровня
+                world = reset_level(level)
+                game_over = 0
+            else:
+                time_to_count = False
+                write_text('    Тугриков X ' + str(score) + ' монет', font_score, 'green', 8, 8)
+                write_text('Время: ' + str(round(all_time[-1] - all_time[0], 1)) + ' секунд', font_score, 'green', 500,
+                           8)
+                write_text('   ВЫ ВЫИГРАЛИ!', font, white, (screen_width // 2) - 200, screen_height // 2)
+                win_fx.play()
+
+                time_record_game = all_time[-1] - all_time[0]
+                record_time.add(time_record_game)
+                if database:
+                    time_order = "INSERT INTO record_time_coin(Time, Coin)" "VALUES('{}', '{}')".format(
+                        round(time_record_game, 1), score)
+                    cur.execute(time_order).fetchall()
+                    con.commit()
+                    database = False
+                if restart_button.draw():
+                    level = 0  # перезапуск уровня
+                    world_data = []
+                    all_time = []
+                    time_to_count = True
+                    world = reset_level(level)
+                    game_over = 0
+                    score = 0
+                    database = True
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             Running = False
