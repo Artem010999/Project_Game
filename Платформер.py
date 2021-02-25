@@ -144,7 +144,7 @@ while Running:
     screen.blit(Background, (0, 0))
     if main_menu == 1:  # стартовое меню
         write_text('Ω-DUNGEON MASTER-Ω', font, 'white', 115, 50)
-        write_text('[{8--вышла лютая хрень--8}]', font, (64, 224, 208), 75, 740)
+        write_text('[{8--вышла лютая хpень--8}]', font, (64, 224, 208), 75, 740)
         if exit_button.draw():
             Running = False
         if start_button.draw():
